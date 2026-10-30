@@ -13,7 +13,7 @@ from pathlib import Path
 
 from aiohttp import web
 from .engine import Engine, MODEL_ID
-from .tts import TTSEngine, MODEL_ID as TTS_MODEL_ID, SPEAKERS, DEFAULT_SPEAKER, MAX_TEXT, validate
+from .tts import TTSEngine, MODEL_ID as TTS_MODEL_ID, SPEAKERS, DEFAULT_SPEAKER, MAX_TEXT, validate, stop_tts_worker
 from .voices import VoiceStore, decode_reference
 from .tts import QwenCloneEngine, CLONE_MODEL_ID, validate_reference_text
 from .streaming import AudioBuffer, MIN_SECONDS, SAMPLE_RATE
@@ -127,6 +127,7 @@ async def transcribe(request):
             if asr_engine != "qwen":
                 raise ValueError("Доступен только Qwen3-ASR")
             def run_asr():
+                stop_tts_worker()
                 return request.app[ENGINE].transcribe(path, context=context)
             task = asyncio.create_task(asyncio.to_thread(run_asr))
             try:
@@ -154,6 +155,7 @@ async def stream_transcribe(request):
     last_requested = 0
     utterance_id = 0
     total_samples = 0
+    last_partial = None
     try:
         try:
             first = await asyncio.wait_for(ws.receive(), timeout=5)
@@ -179,12 +181,14 @@ async def stream_transcribe(request):
             return ws
 
         async def recognize(samples, final, phrase):
+            await asyncio.to_thread(stop_tts_worker)
             result = await asyncio.to_thread(request.app[ENGINE].transcribe_pcm, samples, context)
             if not ws.closed:
                 await ws.send_json({"type": "final" if final else "partial", "utterance_id": phrase,
                                     "text": result["text"], "language": result["language"],
                                     "audio_seconds": result["duration_seconds"],
                                     "processing_seconds": result["processing_seconds"]})
+            return result
 
         while not ws.closed:
             try:
@@ -200,7 +204,7 @@ async def stream_transcribe(request):
                 if total_samples > 600 * SAMPLE_RATE:
                     raise ValueError("Максимум 10 минут аудио за сеанс")
                 if pending is not None and pending.done():
-                    await pending
+                    last_partial = await pending
                     pending = None
                 if pending is None and buffer.seconds >= 2 and buffer.samples - last_requested >= 2 * SAMPLE_RATE:
                     last_requested = buffer.samples
@@ -210,13 +214,21 @@ async def stream_transcribe(request):
                 if not isinstance(command, dict) or command.get("type") not in {"flush", "stop"}:
                     raise ValueError("Неизвестная команда потока")
                 if pending is not None:
-                    await pending
+                    last_partial = await pending
                     pending = None
                 if buffer.seconds >= MIN_SECONDS:
-                    await recognize(buffer.snapshot(), True, utterance_id)
+                    if last_partial is not None and last_requested == buffer.samples:
+                        result = last_partial
+                        await ws.send_json({"type": "final", "utterance_id": utterance_id,
+                                            "text": result["text"], "language": result["language"],
+                                            "audio_seconds": result["duration_seconds"],
+                                            "processing_seconds": 0, "reused_partial": True})
+                    else:
+                        await recognize(buffer.snapshot(), True, utterance_id)
                     utterance_id += 1
                 buffer.clear()
                 last_requested = 0
+                last_partial = None
                 if command["type"] == "stop":
                     await ws.send_json({"type": "stopped"})
                     break
@@ -383,6 +395,9 @@ def create_app(engine=None, tts=None, voices=None, qwen_clone=None):
     app.router.add_get('/api/voices/{key}/audio', voice_audio)
     app.router.add_delete('/api/voices/{key}', voice_delete)
     app.router.add_put('/api/voices/{key}/transcript', voice_reference_text)
+    async def cleanup_tts(application):
+        await asyncio.to_thread(stop_tts_worker)
+    app.on_cleanup.append(cleanup_tts)
     if isinstance(app[ENGINE], Engine) and os.getenv("ASR_PRELOAD", "1") != "0" and (ROOT / "models/asr.json").exists():
         async def preload(application):
             async def run():

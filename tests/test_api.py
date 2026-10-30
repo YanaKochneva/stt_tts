@@ -27,6 +27,7 @@ class FixtureEngine:
         return {"text": "fixture", "language": "Russian", "context": context}
 
     def transcribe_pcm(self, samples, context=""):
+        self.calls = getattr(self, "calls", 0) + 1
         return {"text": "fixture", "language": "Russian", "duration_seconds": round(len(samples)/16000, 3),
                 "processing_seconds": .01, "context": context}
 
@@ -91,6 +92,8 @@ class APITests(unittest.IsolatedAsyncioTestCase):
         await ws.send_json({"type": "flush"})
         final = await asyncio.wait_for(ws.receive_json(), 5)
         self.assertEqual((final["type"], final["utterance_id"]), ("final", 0))
+        self.assertTrue(final["reused_partial"])
+        self.assertEqual(self.engine.calls, 1)
         await ws.send_json({"type": "stop"})
         self.assertEqual((await asyncio.wait_for(ws.receive_json(), 5))["type"], "stopped")
         await ws.close()
