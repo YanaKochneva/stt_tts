@@ -144,6 +144,16 @@ class QwenCloneEngine(TTSEngine):
         metadata.update(voice_name=voice['name'], cloned_voice=True)
         return audio, metadata
 
+    def synthesize_reference(self, text, reference_audio, ref_text=''):
+        """Clone from a one-off reference without creating a saved voice."""
+        text = validate(text, 'one-off', speakers=('one-off',))
+        ref_text = validate_reference_text(ref_text)
+        audio, metadata = self._run(dict(text=text, speaker='one-off', mode='clone',
+                                         reference_audio=str(reference_audio), ref_text=ref_text),
+                                    self.clone_manifest)
+        metadata.update(cloned_voice=True)
+        return audio, metadata
+
 
 def validate_reference_text(value):
     if not isinstance(value, str) or len(value) > 2000:

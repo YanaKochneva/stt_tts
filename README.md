@@ -73,10 +73,13 @@ ASR — `D:\Games\STT_TTS_project\envs\py312`; отдельное окружен
 | `POST /api/transcribe` | Multipart: `file`, `engine=qwen`, необязательный `context` |
 | `GET /api/stream` | WebSocket: моно PCM16 16 кГц, `engine=qwen` |
 | `POST /api/tts` | JSON: `text`, `engine=qwen` или `qwen_clone`, `speaker`, необязательный `ref_text` |
+| `POST /api/tts/clone` | Multipart: `text` + `file` с образцом голоса, необязательный `ref_text`; разовое клонирование без сохранения |
 | `GET/POST /api/voices` | Список и сохранение пользовательских голосов |
 | `GET /api/voices/{id}/audio` | Прослушивание сохранённого образца |
 | `DELETE /api/voices/{id}` | Удаление пользовательского голоса |
 | `PUT /api/voices/{id}/transcript` | Сохранение текста образца |
+
+Подробный контракт и примеры запросов: [docs/api.md](docs/api.md).
 
 План ускорения, исходные измерения и результаты первого замера:
 [docs/optimization-plan.md](docs/optimization-plan.md). Старые исследования

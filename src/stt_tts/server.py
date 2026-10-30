@@ -298,6 +298,71 @@ async def synthesize(request):
         request.app[STATE]["operation"] = None
 
 
+async def clone_once(request):
+    """One-off text + voice sample -> WAV, without saving a voice profile."""
+    if request.app[STATE]["busy"]:
+        return web.json_response({"error": "Сервис занят. Дождись завершения."}, status=429)
+    request.app[STATE].update(busy=True, operation="tts")
+    try:
+        if request.content_type != "multipart/form-data":
+            raise ValueError("Ожидается multipart/form-data с text и file")
+        with tempfile.TemporaryDirectory(prefix="clone-request-", dir=ROOT / "tmp") as directory:
+            folder = Path(directory)
+            reader = await request.multipart()
+            text, ref_text, sample, total = None, "", None, 0
+            while (part := await reader.next()) is not None:
+                if part.name == "file":
+                    if sample is not None:
+                        raise ValueError("Разрешён один образец голоса")
+                    sample = folder / "reference.media"
+                    with sample.open("wb") as output:
+                        while chunk := await part.read_chunk():
+                            total += len(chunk)
+                            if total > 16 * 1024 * 1024:
+                                raise ValueError("Образец должен быть меньше 16 МиБ")
+                            output.write(chunk)
+                elif part.name in {"text", "ref_text"}:
+                    raw = bytearray()
+                    while chunk := await part.read_chunk():
+                        raw.extend(chunk)
+                        if len(raw) > 8192:
+                            raise ValueError("Слишком длинное текстовое поле")
+                    try:
+                        value = raw.decode("utf-8")
+                    except UnicodeDecodeError as exc:
+                        raise ValueError("Текст должен быть в UTF-8") from exc
+                    if part.name == "text":
+                        text = value
+                    else:
+                        ref_text = value
+            text = validate(text, "one-off", speakers=("one-off",))
+            ref_text = validate_reference_text(ref_text)
+            if sample is None or not total:
+                raise ValueError("Добавь непустой образец голоса")
+
+            def run():
+                _, reference, _ = decode_reference(sample)
+                wav = folder / "reference.wav"
+                wav.write_bytes(reference)
+                request.app[ENGINE].unload()
+                return request.app[QWEN_CLONE].synthesize_reference(text, wav, ref_text)
+
+            task = asyncio.create_task(asyncio.to_thread(run))
+            try:
+                audio, metadata = await asyncio.shield(task)
+            except asyncio.CancelledError:
+                with contextlib.suppress(Exception):
+                    await task
+                raise
+            metadata["engine"] = "qwen_clone"
+            return web.Response(body=audio, content_type="audio/wav", headers={
+                "Content-Disposition": 'attachment; filename="speech.wav"',
+                "Cache-Control": "no-store", "X-TTS-Metadata": json.dumps(metadata),
+            })
+    finally:
+        request.app[STATE].update(busy=False, operation=None)
+
+
 async def voice_list(request):
     return web.json_response({'voices': request.app[VOICES].list()}, headers={'Cache-Control': 'no-store'})
 
@@ -390,6 +455,7 @@ def create_app(engine=None, tts=None, voices=None, qwen_clone=None):
     app.router.add_post("/api/transcribe", transcribe)
     app.router.add_get("/api/stream", stream_transcribe)
     app.router.add_post("/api/tts", synthesize)
+    app.router.add_post("/api/tts/clone", clone_once)
     app.router.add_get('/api/voices', voice_list)
     app.router.add_post('/api/voices', voice_add)
     app.router.add_get('/api/voices/{key}/audio', voice_audio)

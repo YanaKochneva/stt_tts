@@ -11,7 +11,7 @@ from unittest.mock import patch
 from aiohttp import FormData
 from aiohttp.test_utils import TestClient, TestServer
 from stt_tts.paths import ROOT
-from stt_tts.server import create_app, STATE
+from stt_tts.server import create_app, STATE, QWEN_CLONE
 
 
 class FixtureEngine:
@@ -108,6 +108,25 @@ class APITests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.engine.unloaded)
         self.client.server.app[STATE]["busy"] = True
         self.assertEqual((await self.client.post("/api/tts", headers=self.headers)).status, 429)
+
+    async def test_one_off_clone_accepts_text_and_sample_without_saving_voice(self):
+        class CloneFixture(FixtureTTS):
+            def synthesize_reference(self, text, reference_audio, ref_text):
+                self.received = (text, reference_audio.read_bytes(), ref_text)
+                return super().synthesize(text, "one-off")
+        clone = CloneFixture()
+        before = (await (await self.client.get("/api/voices", headers=self.headers)).json())["voices"]
+        form = FormData()
+        form.add_field("text", "Привет")
+        form.add_field("ref_text", "Образец")
+        form.add_field("file", b"fixture audio", filename="sample.wav")
+        with patch("stt_tts.server.decode_reference", return_value=(None, b"RIFF-reference", 4.0)), \
+             patch.object(self.client.server.app[QWEN_CLONE], "synthesize_reference", clone.synthesize_reference):
+            response = await self.client.post("/api/tts/clone", headers=self.headers, data=form)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(clone.received[0::2], ("Привет", "Образец"))
+        self.assertEqual(clone.received[1], b"RIFF-reference")
+        self.assertEqual((await (await self.client.get("/api/voices", headers=self.headers)).json())["voices"], before)
 
     async def test_tts_holds_slot_until_worker_finishes(self):
         started, release = threading.Event(), threading.Event()
