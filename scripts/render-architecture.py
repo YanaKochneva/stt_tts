@@ -134,3 +134,20 @@ label(76, H - 55, "Исходный код: src/stt_tts/api, engines, config.py,
 OUT.parent.mkdir(parents=True, exist_ok=True)
 im.save(OUT, optimize=True)
 print(OUT)
+
+names = (
+    "01-file-recognition.png",
+    "02-live-recognition.png",
+    "03-built-in-voice.png",
+    "04-one-off-cloning.png",
+    "05-save-voice.png",
+    "06-saved-voice.png",
+)
+for i, name in enumerate(names):
+    x = margin + (i % 2) * (pw + gap)
+    y = 250 + (i // 2) * (ph + 46)
+    # Keep a small margin around the complete process panel.
+    cropped = im.crop((x - 18, y - 18, x + pw + 18, y + ph + 18))
+    path = OUT.parent / name
+    cropped.save(path, optimize=True)
+    print(path)
