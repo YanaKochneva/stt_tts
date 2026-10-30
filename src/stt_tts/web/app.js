@@ -10,17 +10,17 @@ function updateTTSEngine(){
  const name=$('ttsEngine').value,info=ttsCatalog[name];
  if(!info)return;
  if(voiceEngine!==name){
-  const female=new Set(['Bella','Ava','Serena','Vivian','Ono_Anna','Sohee']);
-  $('ttsSpeaker').replaceChildren(...info.speakers.map(s=>new Option(`${s} — ${female.has(s)?'женский':'мужской'}`,s)),...(['moss','qwen_clone','cosyvoice'].includes(name)?savedVoices.map(v=>new Option(`${v.name} — мой голос`,v.id)):[]));
+  const female=new Set(['Serena','Vivian','Ono_Anna','Sohee']);
+  $('ttsSpeaker').replaceChildren(...info.speakers.map(s=>new Option(`${s} — ${female.has(s)?'женский':'мужской'}`,s)),...(name==='qwen_clone'?savedVoices.map(v=>new Option(`${v.name} — мой голос`,v.id)):[]));
   $('ttsSpeaker').value=info.default_speaker||(savedVoices[0]?.id||'');voiceEngine=name;
   if(!$('ttsSpeaker').options.length)$('ttsSpeaker').add(new Option('Сначала сохраните образец голоса',''));
  }
- $('ttsSpeaker').disabled=ttsGenerating||referenceTranscribing||(!info.installed&&!['qwen_clone','cosyvoice'].includes(name));
+ $('ttsSpeaker').disabled=ttsGenerating||referenceTranscribing||!info.installed;
  $('ttsGenerate').disabled=ttsGenerating||referenceTranscribing||!info.installed||!$('ttsSpeaker').value;
- $('qwenCloneOptions').hidden=!['qwen_clone','cosyvoice'].includes(name);
- $('referenceHint').textContent=name==='cosyvoice'?'CosyVoice 3: нужна точная расшифровка выбранного образца. Нажмите кнопку распознавания и проверьте текст.':'Qwen Base: без расшифровки используется только тембр; с точным текстом — речь и текст образца.';
- $('referenceLabel').textContent=name==='cosyvoice'?'Что сказано в образце (обязательно для CosyVoice)':'Что сказано в образце (необязательно)';
- $('qwenReferenceText').placeholder=name==='cosyvoice'?'Точная расшифровка выбранного образца. Обязательна для CosyVoice 3.':'Точная расшифровка выбранного образца. Можно оставить пустым для клонирования только по тембру.';
+ $('qwenCloneOptions').hidden=name!=='qwen_clone';
+ $('referenceHint').textContent='Qwen Base: без расшифровки используется только тембр; с точным текстом — речь и текст образца.';
+ $('referenceLabel').textContent='Что сказано в образце (необязательно)';
+ $('qwenReferenceText').placeholder='Точная расшифровка выбранного образца. Можно оставить пустым для клонирования только по тембру.';
  $('qwenTranscribeReference').disabled=ttsGenerating||referenceTranscribing||!$('ttsSpeaker').value;
  syncReferenceVoice();
 }
@@ -29,7 +29,7 @@ function syncReferenceVoice(){
  if(referenceVoice!==key){$('qwenReferenceText').value=savedVoices.find(v=>v.id===key)?.ref_text||'';$('qwenReferenceMessage').textContent='';referenceVoice=key;}
 }
 $('ttsSpeaker').onchange=()=>{syncReferenceVoice();updateTTSEngine();};
-async function refresh(){try{const s=await(await fetch('/health')).json();ttsCatalog=s.tts?.engines||{};updateTTSEngine();const selected=$('asrEngine').value,asr=s.asr_engines?.[selected];$('status').textContent=`ASR ${selected}: ${asr?(asr.installed?asr.state:'не установлен'):s.model_state} · MOSS: ${s.tts?.engines?.moss?.state||'не установлен'} · ${s.busy?({tts:'идёт синтез',voice:'подготавливается голос',stt:'идёт распознавание'}[s.operation]||'сервис занят'):'сервис свободен'}`;}catch{$('status').textContent='Сервер недоступен';}}
+async function refresh(){try{const s=await(await fetch('/health')).json();ttsCatalog=s.tts?.engines||{};updateTTSEngine();const asr=s.asr_engines?.qwen;$('status').textContent=`Qwen ASR: ${asr?(asr.installed?asr.state:'не установлен'):s.model_state} · ${s.busy?({tts:'идёт синтез',voice:'подготавливается голос',stt:'идёт распознавание'}[s.operation]||'сервис занят'):'сервис свободен'}`;}catch{$('status').textContent='Сервер недоступен';}}
 $('asrEngine').onchange=refresh;
 refresh();setInterval(refresh,5000);
 async function refreshVoices(selected){
@@ -55,12 +55,12 @@ $('voiceSave').onclick=async()=>{
  if(!file||!name){$('voiceMessage').textContent='Укажи имя и выбери образец голоса';return;}
  if(file.size>16*1024*1024){$('voiceMessage').textContent='Максимум 16 МиБ';return;}
  if(voiceSaving)return;voiceSaving=true;$('voiceSave').disabled=true;
- $('voiceMessage').textContent='Подготавливаем голос на CPU… Первая загрузка может занять время.';
+ $('voiceMessage').textContent='Сохраняем образец голоса…';
  try{
   const form=new FormData();form.append('name',name);form.append('file',file);
   const response=await fetch('/api/voices',{method:'POST',headers:authHeaders(),body:form});
   const data=await response.json();if(!response.ok)throw new Error(data.error||'Ошибка сохранения');
-  if(!['qwen_clone','cosyvoice'].includes($('ttsEngine').value))$('ttsEngine').value='moss';await refreshVoices(data.id);
+  $('ttsEngine').value='qwen_clone';await refreshVoices(data.id);
   $('voiceMessage').textContent=`Голос «${data.name}» сохранён и выбран для озвучивания. Образец: ${data.duration_seconds} с.`;
  }catch(e){$('voiceMessage').textContent=e.message;}
  finally{voiceSaving=false;$('voiceSave').disabled=false;refresh();}
@@ -221,22 +221,21 @@ $('ttsGenerate').onclick=async()=>{
  const text=$('ttsText').value.trim();
  if(!text){$('ttsMessage').textContent='Введите текст или загрузите TXT-файл';return;}
  if([...text].length>2000){$('ttsMessage').textContent='Максимум 2000 символов';return;}
- if($('ttsEngine').value==='cosyvoice'&&!$('qwenReferenceText').value.trim()){$('ttsMessage').textContent='Для CosyVoice распознайте выбранный образец и проверьте его расшифровку.';return;}
  ttsGenerating=true;updateTTSEngine();$('ttsEngine').disabled=true;$('ttsOutput').hidden=true;$('ttsAudio').pause();
  const engine=$('ttsEngine').value;
- $('ttsMessage').textContent=engine==='moss'?'MOSS синтезирует речь на CPU… Первый запрос включает загрузку модели.':engine==='cosyvoice'?'CosyVoice 3 готовит образец и синтезирует речь… Загрузка модели входит во время ожидания.':'Qwen готовит голос и синтезирует речь… Загрузка модели входит во время ожидания.';
+ $('ttsMessage').textContent='Qwen готовит голос и синтезирует речь… Загрузка модели входит во время ожидания.';
  try{
   const headers={'Content-Type':'application/json'};
   if($('token').value)headers.Authorization='Bearer '+$('token').value;
-  const response=await fetch('/api/tts',{method:'POST',headers,body:JSON.stringify({text,engine,speaker:$('ttsSpeaker').value,...(['qwen_clone','cosyvoice'].includes(engine)?{ref_text:$('qwenReferenceText').value}: {})})});
+  const response=await fetch('/api/tts',{method:'POST',headers,body:JSON.stringify({text,engine,speaker:$('ttsSpeaker').value,...(engine==='qwen_clone'?{ref_text:$('qwenReferenceText').value}: {})})});
   if(!response.ok){const error=await response.json();throw new Error(error.error||`Ошибка ${response.status}`);}
   const meta=JSON.parse(response.headers.get('X-TTS-Metadata')||'{}');
   const blob=await response.blob();
   if(ttsURL)URL.revokeObjectURL(ttsURL);
   ttsURL=URL.createObjectURL(blob);$('ttsAudio').src=ttsURL;$('ttsDownload').href=ttsURL;
   $('ttsOutput').hidden=false;
-  const mode=['qwen_clone','cosyvoice'].includes(meta.engine)?(meta.clone_mode==='reference_text'?' · образец + расшифровка':' · только тембр'):'';
-  $('ttsMessage').textContent=`Готово · ${meta.engine==='moss'?'MOSS':meta.engine==='cosyvoice'?'CosyVoice 3':meta.engine==='qwen_clone'?'Qwen Base':'Qwen'}${mode} · ${meta.voice_name||meta.speaker}. Аудио: ${meta.duration_seconds} с; обработка: ${meta.processing_seconds} с. Можно прослушать и скачать WAV.`;
+  const mode=meta.engine==='qwen_clone'?(meta.clone_mode==='reference_text'?' · образец + расшифровка':' · только тембр'):'';
+  $('ttsMessage').textContent=`Готово · ${meta.engine==='qwen_clone'?'Qwen Base':'Qwen'}${mode} · ${meta.voice_name||meta.speaker}. Аудио: ${meta.duration_seconds} с; обработка: ${meta.processing_seconds} с. Можно прослушать и скачать WAV.`;
  }catch(e){$('ttsMessage').textContent=e.message;}
  finally{ttsGenerating=false;$('ttsEngine').disabled=false;updateTTSEngine();refresh();}
 };

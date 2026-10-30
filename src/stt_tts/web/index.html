@@ -5,8 +5,8 @@
 <h1>Локальная речь</h1><p>Распознавание и синтез речи на вашем компьютере.</p>
 <div id="status">Проверяем сервер…</div>
 <section><label>API-токен (если включён)<input id="token" type="password" autocomplete="off"></label>
-<h2>Речь → текст</h2><p>Qwen определяет язык автоматически. Whisper Stage AW предназначен для русской речи. Перевод не выполняется.</p>
-<label>Движок распознавания <select id="asrEngine"><option value="qwen">Qwen3-ASR — автоопределение языка</option><option value="whisper">Whisper Stage AW — русский</option><option value="nemotron">Nemotron 3.5 ASR Streaming 0.6B — тест · OpenMDW 1.1</option></select></label>
+<h2>Речь → текст</h2><p>Qwen3-ASR определяет язык автоматически и распознаёт сказанное без перевода.</p>
+<label>Движок распознавания <select id="asrEngine"><option value="qwen">Qwen3-ASR — автоопределение языка</option></select></label>
 <label>Аудио или видео <input id="file" type="file" accept="audio/*,video/*"></label>
 <button id="send">Распознать файл</button><button id="record">Записать с микрофона</button><button id="stop" disabled>Остановить запись</button><button id="sendRecording" disabled>Распознать запись</button>
 <p><button id="liveStart">Начать живое распознавание</button><button id="liveStop" disabled>Завершить живое распознавание</button></p>
@@ -18,7 +18,7 @@
 <label>Загрузить текст (.txt, UTF-8) <input id="ttsFile" type="file" accept=".txt,text/plain"></label>
 <label for="ttsText">Текст для озвучивания</label><textarea id="ttsText" maxlength="2000" placeholder="Введите текст или загрузите TXT-файл"></textarea>
 <small id="ttsCount">0 / 2000 символов</small>
-<label>Движок <select id="ttsEngine"><option value="moss" selected>MOSS-TTS-Nano — CPU</option><option value="qwen">Qwen3-TTS — готовые голоса · GPU</option><option value="qwen_clone">Qwen Base — клонирование · GPU</option><option value="cosyvoice">CosyVoice 3 — клонирование · GPU</option></select></label>
+<label>Движок <select id="ttsEngine"><option value="qwen" selected>Qwen3-TTS — встроенные голоса</option><option value="qwen_clone">Qwen Base — мой голос</option></select></label>
 <label>Голос <select id="ttsSpeaker" disabled><option>Загрузка голосов…</option></select></label>
 <div id="qwenCloneOptions" hidden>
 <p id="referenceHint">Выберите сохранённый голос.</p>
@@ -26,7 +26,7 @@
 <textarea id="qwenReferenceText" maxlength="2000" placeholder="Точная расшифровка выбранного образца. Оставьте пустым для клонирования только по тембру."></textarea>
 <button id="qwenTranscribeReference">Распознать выбранный образец</button>
 <button id="saveReferenceText">Сохранить текст образца</button>
-<p><small>После распознавания проверьте текст и сохраните его один раз для выбранного голоса. Образец WAV и этот текст будут использоваться в следующих запросах без повторной загрузки файла. Qwen и CosyVoice запускаются отдельно для каждого запроса, чтобы освобождать видеопамять после синтеза.</small></p>
+<p><small>После распознавания проверьте текст и сохраните его один раз для выбранного голоса. Образец WAV и этот текст будут использоваться в следующих запросах без повторной загрузки файла. Qwen сейчас запускается отдельно для каждого запроса, чтобы освобождать видеопамять.</small></p>
 <p id="qwenReferenceMessage" role="status" aria-live="polite"></p>
 </div>
 <details id="voicePanel"><summary>Мои голоса — клонирование по образцу</summary>
@@ -38,12 +38,12 @@
 <p id="voiceMessage" role="status" aria-live="polite"></p>
 <label>Сохранённые голоса <select id="savedVoice"><option value="">Пока нет голосов</option></select></label>
 <button id="voiceListen">Прослушать образец</button><button id="voiceDelete">Удалить выбранный голос</button>
-<p><small>Образец и коды голоса сохраняются на диске D до удаления. Сохранённые образцы доступны в MOSS, Qwen Base и CosyVoice 3. Сходство голоса и точность произношения зависят от записи.</small></p>
+<p><small>Образец WAV сохраняется на диске D до удаления и используется Qwen Base. Сходство голоса и точность произношения зависят от записи.</small></p>
 </details>
 <button id="ttsGenerate" disabled>Озвучить текст</button><button id="ttsUseTranscript">Взять текст расшифровки</button>
-<p><small id="ttsHint">До 2000 символов. MOSS работает на CPU и остаётся загруженным после первого запроса. Qwen запускается на GPU отдельно для каждого синтеза. Даты, время и температуры подготавливаются для обоих движков. Произношение зависит от голоса.</small></p>
+<p><small id="ttsHint">До 2000 символов. Qwen запускается на GPU отдельно для каждого синтеза. Даты, время и температуры подготавливаются перед озвучиванием. Произношение зависит от голоса.</small></p>
 <p id="ttsMessage" role="status" aria-live="polite"></p>
 <div id="ttsOutput" hidden><audio id="ttsAudio" controls preload="metadata"></audio><a id="ttsDownload" download="speech.wav">Скачать WAV</a></div>
 </section>
 <p><small>LLM и прямой диалог пока не подключены. Кэш, окружения и временные данные находятся на D:. Микрофон по сети требует HTTPS.</small></p>
-<script type="module" src="/app.js?v=streaming-1"></script></html>
+<script type="module" src="/app.js?v=qwen-only-1"></script></html>

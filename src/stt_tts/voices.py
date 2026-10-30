@@ -1,4 +1,4 @@
-"""SPDX-License-Identifier: Apache-2.0. Local reference audio and cached codec tokens."""
+"""SPDX-License-Identifier: Apache-2.0. Local reference audio for Qwen cloning."""
 import io
 import json
 import re
@@ -29,7 +29,9 @@ class VoiceStore:
 
     def save(self, name, codes, audio, duration):
         key = 'clone-' + uuid.uuid4().hex
-        data = dict(id=key, name=name, codes=codes, duration_seconds=round(duration, 3))
+        data = dict(id=key, name=name, duration_seconds=round(duration, 3))
+        if codes is not None:
+            data['codes'] = codes  # Backward compatibility with existing saved profiles.
         wav = self.path(key, '.wav')
         temporary = self.path(key, '.tmp')
         try:

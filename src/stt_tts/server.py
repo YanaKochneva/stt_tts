@@ -13,27 +13,19 @@ from pathlib import Path
 
 from aiohttp import web
 from .engine import Engine, MODEL_ID
-from .whisper_asr import WhisperEngine, MODEL_ID as WHISPER_MODEL_ID
-from .nemotron_asr import NemotronEngine, MODEL_ID as NEMOTRON_MODEL_ID
 from .tts import TTSEngine, MODEL_ID as TTS_MODEL_ID, SPEAKERS, DEFAULT_SPEAKER, MAX_TEXT, validate
-from .moss import MossEngine, MODEL_ID as MOSS_MODEL_ID, SPEAKERS as MOSS_SPEAKERS, DEFAULT_SPEAKER as MOSS_DEFAULT
-from .voices import VoiceStore
+from .voices import VoiceStore, decode_reference
 from .tts import QwenCloneEngine, CLONE_MODEL_ID, validate_reference_text
-from .cosyvoice import CosyVoiceEngine, MODEL_ID as COSYVOICE_MODEL_ID
 from .streaming import AudioBuffer, MIN_SECONDS, SAMPLE_RATE
 
 LOG = logging.getLogger("stt_tts")
 WEB = Path(__file__).parent / "web"
 ENGINE = web.AppKey("engine", Engine)
-WHISPER = web.AppKey("whisper", WhisperEngine)
-NEMOTRON = web.AppKey("nemotron", NemotronEngine)
 TTS = web.AppKey("tts", TTSEngine)
-MOSS = web.AppKey("moss", MossEngine)
 STATE = web.AppKey("state", dict)
 TOKEN = web.AppKey("token", str)
 VOICES = web.AppKey("voices", VoiceStore)
 QWEN_CLONE = web.AppKey('qwen_clone', QwenCloneEngine)
-COSYVOICE = web.AppKey('cosyvoice', CosyVoiceEngine)
 WARMUP = web.AppKey('warmup', asyncio.Task)
 LIMIT = 64 * 1024 * 1024
 
@@ -77,32 +69,18 @@ async def health(request):
     return web.json_response({"service": "stt_tts", "model": MODEL_ID,
                              "model_state": engine.state, "device": engine.device,
                              "asr_engines": {
-                                 "qwen": {"model": MODEL_ID, "installed": (ROOT / "models/asr.json").exists(), "state": engine.state},
-                                 "whisper": {"model": WHISPER_MODEL_ID,
-                                             "installed": (ROOT / "models/whisper-asr.json").exists(),
-                                             "state": request.app[WHISPER].state},
-                                 "nemotron": {"model": NEMOTRON_MODEL_ID,
-                                              "installed": (ROOT / "models/nemotron-asr.json").exists(),
-                                              "state": request.app[NEMOTRON].state,
-                                              "license": "OpenMDW-1.1"}},
+                                 "qwen": {"model": MODEL_ID, "installed": (ROOT / "models/asr.json").exists(), "state": engine.state}},
                              "busy": request.app[STATE]["busy"], "data_root": str(ROOT),
                              "operation": request.app[STATE].get("operation"),
                              "tts": {"model": TTS_MODEL_ID, "speakers": SPEAKERS, "default_speaker": DEFAULT_SPEAKER, "max_text": MAX_TEXT,
                                      "installed": (ROOT / "models/tts.json").exists() and (ROOT / "envs/tts/Scripts/python.exe").exists(),
                                      "engines": {
-                                         'cosyvoice': {'label': 'CosyVoice 3 · клонирование · GPU', 'model': COSYVOICE_MODEL_ID,
-                                                       'speakers': [], 'default_speaker': '',
-                                                       'installed': (ROOT / 'models/cosyvoice.json').exists() and (ROOT / 'envs/cosyvoice3/Scripts/python.exe').exists()},
                                          'qwen_clone': {'label': 'Qwen Base · клонирование · GPU', 'model': CLONE_MODEL_ID,
                                                         'speakers': [], 'default_speaker': '',
                                                         'installed': (ROOT / 'models/qwen-clone.json').exists() and (ROOT / 'envs/tts/Scripts/python.exe').exists()},
                                          "qwen": {"label": "Qwen3-TTS · GPU", "model": TTS_MODEL_ID,
                                                   "speakers": SPEAKERS, "default_speaker": DEFAULT_SPEAKER,
                                                   "installed": (ROOT / "models/tts.json").exists()},
-                                         "moss": {"label": "MOSS-TTS-Nano · CPU", "model": MOSS_MODEL_ID,
-                                                  "speakers": MOSS_SPEAKERS, "default_speaker": MOSS_DEFAULT,
-                                                  "state": request.app[MOSS].state,
-                                                  "installed": (ROOT / "models/moss.json").exists()},
                                      }},
                              "features": {"stt": True, "streaming_stt": True, "tts": True, "voice_cloning": True, "live_dialog": False},
                              "simulated": False})
@@ -146,21 +124,9 @@ async def transcribe(request):
                         asr_engine = value
             if not path or not total:
                 raise ValueError("Выбери непустой аудио- или видеофайл")
-            if asr_engine not in {"qwen", "whisper", "nemotron"}:
-                raise ValueError("Выбери движок распознавания qwen, whisper или nemotron")
-            if asr_engine in {"whisper", "nemotron"} and context:
-                raise ValueError("Контекстные подсказки для этого движка пока не поддерживаются")
+            if asr_engine != "qwen":
+                raise ValueError("Доступен только Qwen3-ASR")
             def run_asr():
-                if asr_engine == "whisper":
-                    request.app[ENGINE].unload()
-                    request.app[NEMOTRON].unload()
-                    return request.app[WHISPER].transcribe(path, context=context)
-                if asr_engine == "nemotron":
-                    request.app[ENGINE].unload()
-                    request.app[WHISPER].unload()
-                    return request.app[NEMOTRON].transcribe(path, context=context)
-                request.app[WHISPER].unload()
-                request.app[NEMOTRON].unload()
                 return request.app[ENGINE].transcribe(path, context=context)
             task = asyncio.create_task(asyncio.to_thread(run_asr))
             try:
@@ -205,25 +171,15 @@ async def stream_transcribe(request):
             context = config.get("context", "")
             if not isinstance(context, str) or len(context) > 2000:
                 raise ValueError("Слишком длинная контекстная подсказка")
-            asr_engine = config.get("engine", "qwen")
-            if asr_engine not in {"qwen", "nemotron"}:
-                raise ValueError("Живое распознавание поддерживает Qwen и Nemotron")
-            if asr_engine == "nemotron" and context:
-                raise ValueError("Контекстные подсказки для Nemotron пока не поддерживаются")
-            request.app[WHISPER].unload()
-            if asr_engine == "nemotron":
-                request.app[ENGINE].unload()
-            else:
-                request.app[NEMOTRON].unload()
-            selected_model = NEMOTRON_MODEL_ID if asr_engine == "nemotron" else MODEL_ID
-            await ws.send_json({"type": "ready", "model": selected_model, "sample_rate": SAMPLE_RATE})
+            if config.get("engine", "qwen") != "qwen":
+                raise ValueError("Живое распознавание поддерживает только Qwen")
+            await ws.send_json({"type": "ready", "model": MODEL_ID, "sample_rate": SAMPLE_RATE})
         except (ValueError, json.JSONDecodeError, asyncio.TimeoutError) as exc:
             await ws.send_json({"type": "error", "error": str(exc)})
             return ws
 
         async def recognize(samples, final, phrase):
-            selected = request.app[NEMOTRON] if asr_engine == "nemotron" else request.app[ENGINE]
-            result = await asyncio.to_thread(selected.transcribe_pcm, samples, context)
+            result = await asyncio.to_thread(request.app[ENGINE].transcribe_pcm, samples, context)
             if not ws.closed:
                 await ws.send_json({"type": "final" if final else "partial", "utterance_id": phrase,
                                     "text": result["text"], "language": result["language"],
@@ -295,29 +251,20 @@ async def synthesize(request):
         if not isinstance(data, dict):
             raise ValueError("Ожидается JSON-объект")
         engine_name = data.get("engine", "qwen")
-        if not isinstance(engine_name, str) or engine_name not in {'qwen', 'moss', 'qwen_clone', 'cosyvoice'}:
-            raise ValueError('Выбери движок qwen, moss, qwen_clone или cosyvoice')
-        speaker = data.get("speaker", MOSS_DEFAULT if engine_name == "moss" else DEFAULT_SPEAKER)
-        allowed = MOSS_SPEAKERS if engine_name == 'moss' else (() if engine_name in {'qwen_clone','cosyvoice'} else SPEAKERS)
-        if engine_name in {'moss', 'qwen_clone', 'cosyvoice'} and isinstance(speaker, str) and speaker.startswith('clone-'):
+        if not isinstance(engine_name, str) or engine_name not in {'qwen', 'qwen_clone'}:
+            raise ValueError('Выбери Qwen с готовым или пользовательским голосом')
+        speaker = data.get("speaker", DEFAULT_SPEAKER)
+        allowed = () if engine_name == 'qwen_clone' else SPEAKERS
+        if engine_name == 'qwen_clone' and isinstance(speaker, str) and speaker.startswith('clone-'):
             request.app[VOICES].get(speaker)
             allowed = (*allowed, speaker)
         text = validate(data.get("text"), speaker, speakers=allowed)
-        ref_text = validate_reference_text(data.get('ref_text', '')) if engine_name in {'qwen_clone', 'cosyvoice'} else ''
-        if engine_name in {'qwen_clone', 'cosyvoice'} and not ref_text and speaker.startswith('clone-'):
+        ref_text = validate_reference_text(data.get('ref_text', '')) if engine_name == 'qwen_clone' else ''
+        if engine_name == 'qwen_clone' and not ref_text:
             ref_text = validate_reference_text(request.app[VOICES].get(speaker).get('ref_text', ''))
-        if engine_name == 'cosyvoice' and not ref_text:
-            raise ValueError('Для CosyVoice 3 нужна точная расшифровка образца. Распознай образец и проверь текст.')
 
         def run():
-            if engine_name == "moss":
-                # MOSS uses CPU; leave ASR resident on the GPU.
-                return request.app[MOSS].synthesize(text, speaker)
             request.app[ENGINE].unload()
-            request.app[WHISPER].unload()
-            request.app[NEMOTRON].unload()
-            if engine_name == 'cosyvoice':
-                return request.app[COSYVOICE].synthesize(text, speaker, ref_text=ref_text)
             if engine_name == 'qwen_clone':
                 return request.app[QWEN_CLONE].synthesize(text, speaker, ref_text=ref_text)
             return request.app[TTS].synthesize(text, speaker)
@@ -401,7 +348,10 @@ async def voice_add(request):
                 raise ValueError('Введи имя голоса от 1 до 60 символов')
             if path is None or not total:
                 raise ValueError('Выбери непустой образец голоса')
-            task = asyncio.create_task(asyncio.to_thread(request.app[MOSS].add_voice, path, name))
+            def save_reference():
+                _, audio, duration = decode_reference(path)
+                return request.app[VOICES].save(name, None, audio, duration)
+            task = asyncio.create_task(asyncio.to_thread(save_reference))
             try:
                 result = await asyncio.shield(task)
             except asyncio.CancelledError:
@@ -413,18 +363,12 @@ async def voice_add(request):
         request.app[STATE].update(busy=False, operation=None)
 
 
-def create_app(engine=None, tts=None, moss=None, voices=None, qwen_clone=None, cosyvoice=None, whisper=None, nemotron=None):
+def create_app(engine=None, tts=None, voices=None, qwen_clone=None):
     app = web.Application(middlewares=[errors], client_max_size=LIMIT)
     app[ENGINE] = engine or Engine()
-    app[WHISPER] = whisper or WhisperEngine()
-    app[NEMOTRON] = nemotron or NemotronEngine()
     app[TTS] = tts or TTSEngine()
-    app[MOSS] = moss or MossEngine()
     app[VOICES] = voices or VoiceStore()
     app[QWEN_CLONE] = qwen_clone or QwenCloneEngine(app[VOICES])
-    app[COSYVOICE] = cosyvoice or CosyVoiceEngine(app[VOICES])
-    if isinstance(app[MOSS], MossEngine):
-        app[MOSS].voices = app[VOICES]
     app[STATE] = {"busy": False}
     app[TOKEN] = os.getenv("API_TOKEN", "")
     app.router.add_get("/", index)
@@ -439,9 +383,6 @@ def create_app(engine=None, tts=None, moss=None, voices=None, qwen_clone=None, c
     app.router.add_get('/api/voices/{key}/audio', voice_audio)
     app.router.add_delete('/api/voices/{key}', voice_delete)
     app.router.add_put('/api/voices/{key}/transcript', voice_reference_text)
-    async def stop_nemotron(application):
-        await asyncio.to_thread(application[NEMOTRON].unload)
-    app.on_cleanup.append(stop_nemotron)
     if isinstance(app[ENGINE], Engine) and os.getenv("ASR_PRELOAD", "1") != "0" and (ROOT / "models/asr.json").exists():
         async def preload(application):
             async def run():

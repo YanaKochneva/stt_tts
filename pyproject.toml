@@ -5,23 +5,19 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "stt-tts-local"
 version = "0.1.0"
-description = "Local Qwen3 ASR and TTS speech service; project data and caches on D drive"
+description = "Local Qwen3 ASR, speech synthesis and voice cloning; project data on D drive"
 requires-python = ">=3.12,<3.13"
 license = "Apache-2.0"
 dependencies = [
     "qwen-asr==0.0.6",
     "aiohttp>=3.12,<4",
     "av>=14,<17",
-    "onnxruntime==1.31.1",
-    "sentencepiece==0.2.1",
     "transformers==4.57.6",
     "accelerate==1.12.0",
     "numpy==1.26.4",
     "librosa==0.11.0",
+    "soundfile>=0.13,<1",
 ]
-
-[project.optional-dependencies]
-whisper = ["faster-whisper==1.2.1"]
 
 [project.scripts]
 stt-tts = "stt_tts.server:main"
