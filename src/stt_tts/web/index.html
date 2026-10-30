@@ -1,0 +1,49 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STT / TTS — локальная речь</title>
+<style>[hidden]{display:none!important}a{color:#9fe2bd}button:disabled{opacity:.5;cursor:default}#ttsMessage{white-space:pre-wrap}</style>
+<style>body{font:16px system-ui;background:#111827;color:#e5edf7;max-width:850px;margin:40px auto;padding:0 20px}h1{font-size:34px}section{background:#1c2739;padding:24px;border-radius:16px;margin:20px 0}button,input,select,textarea{font:inherit;padding:10px;max-width:100%;box-sizing:border-box}button{cursor:pointer;background:#9fe2bd;border:0;border-radius:8px;margin:5px}textarea{display:block;width:100%;min-height:180px;background:#101827;color:#e5edf7;border:1px solid #526174;border-radius:8px}label{display:block;margin:14px 0}small{color:#adbed4}#status{padding:12px;border:1px solid #566985;border-radius:10px}#message{white-space:pre-wrap;color:#c5d8f1}audio{display:block;margin:12px 0}</style>
+<h1>Локальная речь</h1><p>Распознавание и синтез речи на вашем компьютере.</p>
+<div id="status">Проверяем сервер…</div>
+<section><label>API-токен (если включён)<input id="token" type="password" autocomplete="off"></label>
+<h2>Речь → текст</h2><p>Qwen определяет язык автоматически. Whisper Stage AW предназначен для русской речи. Перевод не выполняется.</p>
+<label>Движок распознавания <select id="asrEngine"><option value="qwen">Qwen3-ASR — автоопределение языка</option><option value="whisper">Whisper Stage AW — русский</option><option value="nemotron">Nemotron 3.5 ASR Streaming 0.6B — тест · OpenMDW 1.1</option></select></label>
+<label>Аудио или видео <input id="file" type="file" accept="audio/*,video/*"></label>
+<button id="send">Распознать файл</button><button id="record">Записать с микрофона</button><button id="stop" disabled>Остановить запись</button><button id="sendRecording" disabled>Распознать запись</button>
+<p><button id="liveStart">Начать живое распознавание</button><button id="liveStop" disabled>Завершить живое распознавание</button></p>
+<p><small>Живой режим: Qwen показывает предварительный текст примерно после 2 секунд речи и уточняет его после паузы. Последние слова могут измениться. Одна фраза — до 30 секунд; весь сеанс — до 10 минут.</small></p>
+<audio id="preview" controls hidden></audio>
+<p><small>Максимум 64 МиБ и 10 минут. Видео: только звуковая дорожка. При первом запросе модель загружается в память. Записи удаляются после обработки.</small></p></section>
+<section><h2>Текст</h2><p id="message"></p><textarea id="result" placeholder="Здесь появится расшифровка"></textarea><button id="copy">Скопировать</button><button id="save">Сохранить TXT</button></section>
+<section><h2>Текст → речь</h2>
+<label>Загрузить текст (.txt, UTF-8) <input id="ttsFile" type="file" accept=".txt,text/plain"></label>
+<label for="ttsText">Текст для озвучивания</label><textarea id="ttsText" maxlength="2000" placeholder="Введите текст или загрузите TXT-файл"></textarea>
+<small id="ttsCount">0 / 2000 символов</small>
+<label>Движок <select id="ttsEngine"><option value="moss" selected>MOSS-TTS-Nano — CPU</option><option value="qwen">Qwen3-TTS — готовые голоса · GPU</option><option value="qwen_clone">Qwen Base — клонирование · GPU</option><option value="cosyvoice">CosyVoice 3 — клонирование · GPU</option></select></label>
+<label>Голос <select id="ttsSpeaker" disabled><option>Загрузка голосов…</option></select></label>
+<div id="qwenCloneOptions" hidden>
+<p id="referenceHint">Выберите сохранённый голос.</p>
+<label id="referenceLabel" for="qwenReferenceText">Что сказано в образце</label>
+<textarea id="qwenReferenceText" maxlength="2000" placeholder="Точная расшифровка выбранного образца. Оставьте пустым для клонирования только по тембру."></textarea>
+<button id="qwenTranscribeReference">Распознать выбранный образец</button>
+<button id="saveReferenceText">Сохранить текст образца</button>
+<p><small>После распознавания проверьте текст и сохраните его один раз для выбранного голоса. Образец WAV и этот текст будут использоваться в следующих запросах без повторной загрузки файла. Qwen и CosyVoice запускаются отдельно для каждого запроса, чтобы освобождать видеопамять после синтеза.</small></p>
+<p id="qwenReferenceMessage" role="status" aria-live="polite"></p>
+</div>
+<details id="voicePanel"><summary>Мои голоса — клонирование по образцу</summary>
+<p>Загрузите чистую запись одного человека без музыки. Используйте свой голос или голос, на использование которого у вас есть разрешение.</p>
+<label>Имя голоса <input id="voiceName" maxlength="60" placeholder="Например, Мой голос"></label>
+<label>Образец: 3–30 секунд, до 16 МиБ <input id="voiceFile" type="file" accept="audio/*"></label>
+<audio id="voicePreview" controls hidden></audio>
+<button id="voiceSave">Сохранить голос</button>
+<p id="voiceMessage" role="status" aria-live="polite"></p>
+<label>Сохранённые голоса <select id="savedVoice"><option value="">Пока нет голосов</option></select></label>
+<button id="voiceListen">Прослушать образец</button><button id="voiceDelete">Удалить выбранный голос</button>
+<p><small>Образец и коды голоса сохраняются на диске D до удаления. Сохранённые образцы доступны в MOSS, Qwen Base и CosyVoice 3. Сходство голоса и точность произношения зависят от записи.</small></p>
+</details>
+<button id="ttsGenerate" disabled>Озвучить текст</button><button id="ttsUseTranscript">Взять текст расшифровки</button>
+<p><small id="ttsHint">До 2000 символов. MOSS работает на CPU и остаётся загруженным после первого запроса. Qwen запускается на GPU отдельно для каждого синтеза. Даты, время и температуры подготавливаются для обоих движков. Произношение зависит от голоса.</small></p>
+<p id="ttsMessage" role="status" aria-live="polite"></p>
+<div id="ttsOutput" hidden><audio id="ttsAudio" controls preload="metadata"></audio><a id="ttsDownload" download="speech.wav">Скачать WAV</a></div>
+</section>
+<p><small>LLM и прямой диалог пока не подключены. Кэш, окружения и временные данные находятся на D:. Микрофон по сети требует HTTPS.</small></p>
+<script type="module" src="/app.js?v=streaming-1"></script></html>
