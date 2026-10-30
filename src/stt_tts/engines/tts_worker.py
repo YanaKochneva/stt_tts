@@ -1,5 +1,5 @@
 """SPDX-License-Identifier: Apache-2.0. Runs only in the separate TTS environment."""
-from .paths import ROOT, configure
+from ..config import ROOT, configure
 configure()
 
 import json
@@ -35,7 +35,7 @@ def process(request_path):
     import torch
     from qwen_tts import Qwen3TTSModel
     from .tts import MODEL_ID, CLONE_MODEL_ID, validate, validate_reference_text
-    from .text_normalization import normalize_for_tts, VERSION
+    from ..text_normalization import normalize_for_tts, VERSION
 
     request = json.loads(request_path.read_text(encoding="utf-8"))
     clone = request.get('mode') == 'clone'

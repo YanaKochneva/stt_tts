@@ -1,5 +1,5 @@
 """SPDX-License-Identifier: Apache-2.0. Isolated Qwen TTS runtime."""
-from .paths import ROOT, configure
+from ..config import ROOT, configure
 configure()
 
 import json
@@ -103,7 +103,7 @@ def validate(text, speaker, speakers=SPEAKERS):
 
 class TTSEngine:
     environment = 'tts'
-    worker_module = 'stt_tts.tts_worker'
+    worker_module = 'stt_tts.engines.tts_worker'
     worker_log = 'tts-worker.log'
     def synthesize(self, text, speaker=DEFAULT_SPEAKER):
         text = validate(text, speaker)

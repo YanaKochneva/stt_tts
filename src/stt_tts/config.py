@@ -2,9 +2,24 @@
 import os
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(os.getenv("STT_TTS_DATA_ROOT", r"D:\Games\STT_TTS_project"))
+
+
+@dataclass(frozen=True)
+class ApiConfig:
+    """HTTP settings. Override with HOST, PORT and API_TOKEN environment variables."""
+    host: str
+    port: int
+    token: str
+
+    @classmethod
+    def from_env(cls):
+        return cls(host=os.getenv("HOST", "127.0.0.1"),
+                   port=int(os.getenv("PORT", "8090")),
+                   token=os.getenv("API_TOKEN", ""))
 
 
 def configure():

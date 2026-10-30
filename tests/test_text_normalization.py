@@ -2,7 +2,7 @@
 import unittest
 
 from stt_tts.text_normalization import normalize_for_tts, year_words
-from stt_tts.tts_worker import split_text
+from stt_tts.engines.tts_worker import split_text
 
 
 class TextNormalizationTests(unittest.TestCase):

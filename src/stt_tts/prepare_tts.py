@@ -1,5 +1,5 @@
 """SPDX-License-Identifier: Apache-2.0. Download pinned TTS weights to D."""
-from .paths import ROOT, configure
+from .config import ROOT, configure
 configure()
 
 import json

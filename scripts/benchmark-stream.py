@@ -11,7 +11,7 @@ from pathlib import Path
 
 import aiohttp
 import numpy as np
-from stt_tts.engine import decode_audio
+from stt_tts.engines.asr import decode_audio
 
 
 async def benchmark(path: Path, seconds: float, url: str):

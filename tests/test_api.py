@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 from aiohttp import FormData
 from aiohttp.test_utils import TestClient, TestServer
-from stt_tts.paths import ROOT
-from stt_tts.server import create_app, STATE, QWEN_CLONE
+from stt_tts.config import ROOT
+from stt_tts.api.app import create_app, STATE, QWEN_CLONE
 
 
 class FixtureEngine:
@@ -120,7 +120,7 @@ class APITests(unittest.IsolatedAsyncioTestCase):
         form.add_field("text", "Привет")
         form.add_field("ref_text", "Образец")
         form.add_field("file", b"fixture audio", filename="sample.wav")
-        with patch("stt_tts.server.decode_reference", return_value=(None, b"RIFF-reference", 4.0)), \
+        with patch("stt_tts.api.app.decode_reference", return_value=(None, b"RIFF-reference", 4.0)), \
              patch.object(self.client.server.app[QWEN_CLONE], "synthesize_reference", clone.synthesize_reference):
             response = await self.client.post("/api/tts/clone", headers=self.headers, data=form)
         self.assertEqual(response.status, 200)
@@ -138,7 +138,7 @@ class APITests(unittest.IsolatedAsyncioTestCase):
                     raise RuntimeError("worker timed out")
                 return super().synthesize(text, speaker)
 
-        from stt_tts.server import TTS
+        from stt_tts.api.app import TTS
         self.client.server.app[TTS].synthesize = SlowTTS().synthesize
         task = asyncio.create_task(self.client.post("/api/tts", headers=self.headers, json={"text": "hello"}))
         try:

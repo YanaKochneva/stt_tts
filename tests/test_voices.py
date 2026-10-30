@@ -7,10 +7,10 @@ from unittest.mock import patch
 
 from aiohttp import FormData
 from aiohttp.test_utils import TestClient, TestServer
-from stt_tts.paths import ROOT
+from stt_tts.config import ROOT
 from stt_tts.voices import VoiceStore, decode_reference
-from stt_tts.server import create_app, STATE, ENGINE
-from stt_tts.tts import QwenCloneEngine
+from stt_tts.api.app import create_app, STATE, ENGINE
+from stt_tts.engines.tts import QwenCloneEngine
 from tests.test_api import FixtureEngine, FixtureTTS
 
 
@@ -37,7 +37,7 @@ class VoiceTests(unittest.IsolatedAsyncioTestCase):
         form = FormData()
         form.add_field("name", "Мой голос")
         form.add_field("file", b"fixture", filename="../../outside.wav")
-        with patch("stt_tts.server.decode_reference", return_value=(None, b"RIFF-fixture", 4.0)):
+        with patch("stt_tts.api.app.decode_reference", return_value=(None, b"RIFF-fixture", 4.0)):
             response = await self.client.post("/api/voices", data=form)
         self.assertEqual(response.status, 201)
         profile = await response.json()

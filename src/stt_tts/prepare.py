@@ -1,10 +1,10 @@
 """SPDX-License-Identifier: Apache-2.0"""
-from .paths import ROOT, configure
+from .config import ROOT, configure
 configure()
 
 import json
 from huggingface_hub import HfApi, snapshot_download
-from .engine import MODEL_ID
+from .engines.asr import MODEL_ID
 
 
 def main():

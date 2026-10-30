@@ -4,7 +4,7 @@ import json
 import re
 import uuid
 import os
-from .paths import ROOT
+from .config import ROOT
 
 
 class VoiceStore:

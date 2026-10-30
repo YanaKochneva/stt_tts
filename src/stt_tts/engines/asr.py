@@ -1,5 +1,5 @@
 """SPDX-License-Identifier: Apache-2.0"""
-from .paths import ROOT, configure
+from ..config import ROOT, configure
 configure()
 
 import json

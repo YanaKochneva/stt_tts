@@ -3,9 +3,9 @@ import json
 import sys
 from pathlib import Path
 
-from stt_tts.paths import ROOT, configure
+from stt_tts.config import ROOT, configure
 configure()
-from stt_tts.engine import Engine
+from stt_tts.engines.asr import Engine
 
 
 def main():

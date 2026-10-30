@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-stt-tts = "stt_tts.server:main"
+stt-tts = "stt_tts.api.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
